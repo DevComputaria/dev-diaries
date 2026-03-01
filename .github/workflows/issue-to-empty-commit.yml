@@ -1,0 +1,67 @@
+name: Issue to Empty Commit
+
+on:
+  issues:
+    types: [opened, edited]  # pode adicionar [reopened, edited] se quiser
+
+permissions:
+  contents: write     # para commit/push
+  issues: write       # para fechar a issue via API
+
+jobs:
+  issue_to_commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # opcional: force main; ou remova para usar a default_branch
+          ref: main
+
+      - name: Prepare commit message from issue
+        id: prepare
+        run: |
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="${{ github.event.issue.body }}"
+
+          {
+            echo "issue(#${ISSUE_NUMBER}): ${ISSUE_TITLE}"
+            echo
+            echo "---"
+            echo "Issue link: https://github.com/${{ github.repository }}/issues/${ISSUE_NUMBER}"
+            echo
+            echo "Body:"
+            echo "${ISSUE_BODY}"
+          } > commit_message.txt
+
+          echo "Commit message gerado:"
+          cat commit_message.txt
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create empty commit with issue content
+        run: |
+          git commit --allow-empty -F commit_message.txt
+
+      - name: Push commit
+        run: |
+          git push origin HEAD:main
+
+      - name: Close issue via GitHub REST API
+        run: |
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+
+          curl -s -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER} \
+            -d '{"state":"closed","state_reason":"completed"}'
+        env:
+          # GITHUB_TOKEN é criado automaticamente pelo Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
